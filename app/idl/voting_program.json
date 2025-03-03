@@ -1,0 +1,303 @@
+{
+  "address": "3ThCo6aDC3H9qmUNz8dALXLrbJbogvVCZeN3iu6Gbsee",
+  "metadata": {
+    "name": "voting_program",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "idl_accounts": [
+    {
+      "name": "ProgramState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal_count",
+            "type": "u64"
+          },
+          {
+            "name": "authority",
+            "type": "publicKey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Proposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "name": "creator",
+            "type": "publicKey"
+          },
+          {
+            "name": "yes_votes",
+            "type": "u64"
+          },
+          {
+            "name": "no_votes",
+            "type": "u64"
+          },
+          {
+            "name": "end_time",
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "total_voters",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoterInfo",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "has_voted",
+            "type": "bool"
+          },
+          {
+            "name": "voter",
+            "type": "publicKey"
+          },
+          {
+            "name": "vote",
+            "type": "bool"
+          }
+        ]
+      }
+    }
+  ],
+  "instructions": [
+    {
+      "name": "initialize",
+      "accounts": [
+        {
+          "name": "programState",
+          "isMut": true,
+          "isSigner": false,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "type": "string",
+                "value": "program_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "createProposal",
+      "accounts": [
+        {
+          "name": "programState",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "proposal",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "creator",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "endTime",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "castVote",
+      "accounts": [
+        {
+          "name": "proposal",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "voterInfo",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "voter",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "vote",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "finalizeProposal",
+      "accounts": [
+        {
+          "name": "proposal",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "authority",
+          "isMut": true,
+          "isSigner": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "events": [
+    {
+      "name": "ProposalCreatedEvent",
+      "fields": [
+        {
+          "name": "proposal_id",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "creator",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "index": false
+        },
+        {
+          "name": "end_time",
+          "type": "i64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "VoteCastEvent",
+      "fields": [
+        {
+          "name": "proposal_id",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "voter",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "vote",
+          "type": "bool",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "ProposalFinalizedEvent",
+      "fields": [
+        {
+          "name": "proposal_id",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "yes_votes",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "no_votes",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "passed",
+          "type": "bool",
+          "index": false
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "ProposalNotActive",
+      "msg": "Proposal is not active"
+    },
+    {
+      "code": 6001,
+      "name": "VotingPeriodEnded",
+      "msg": "Voting period has ended"
+    },
+    {
+      "code": 6002,
+      "name": "VotingPeriodNotEnded",
+      "msg": "Voting period has not ended yet"
+    },
+    {
+      "code": 6003,
+      "name": "AlreadyVoted",
+      "msg": "User has already voted"
+    }
+  ]
+}

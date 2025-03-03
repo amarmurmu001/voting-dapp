@@ -28,9 +28,6 @@ export function ProposalList({ proposals, onSelectProposal, isLoading }: Proposa
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-        Active Proposals
-      </h2>
       <div className="space-y-4">
         {proposals.map((proposal) => {
           if (!proposal || !proposal.id || !proposal.yesVotes || !proposal.noVotes || !proposal.endTime) {

@@ -4,16 +4,48 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { Program, AnchorProvider, web3, BN, Idl } from '@project-serum/anchor';
 import { AnchorWallet } from '@solana/wallet-adapter-react';
+import dynamic from 'next/dynamic';
 import idl from '../../idl/voting_program.json';
 import { ProposalList } from '../../components/ProposalList';
 import { CreateProposalForm } from '../../components/CreateProposalForm';
 import { ProposalDetails } from '../../components/ProposalDetails';
-import { Proposal, ProgramState } from '../types';
+import { Proposal, ProgramState, VoterInfo } from '../types';
 import { Navbar } from '../../components/Navbar';
+import { motion } from 'framer-motion';
+
+// Dynamically import WalletMultiButton with ssr disabled
+const WalletMultiButtonDynamic = dynamic(
+  () => import('@solana/wallet-adapter-react-ui').then((mod) => mod.WalletMultiButton),
+  { ssr: false }
+);
 
 // Constants
 const PROGRAM_ID = new PublicKey("3ThCo6aDC3H9qmUNz8dALXLrbJbogvVCZeN3iu6Gbsee");
 const { SystemProgram } = web3;
+
+// Types
+interface ProgramAccountType {
+  proposalCount: BN;
+  authority: PublicKey;
+}
+
+interface ProposalAccountType {
+  id: BN;
+  title: string;
+  description: string;
+  creator: PublicKey;
+  yesVotes: BN;
+  noVotes: BN;
+  endTime: BN;
+  isActive: boolean;
+  totalVoters: BN;
+}
+
+interface VoterInfoType {
+  hasVoted: boolean;
+  voter: PublicKey;
+  vote: boolean;
+}
 
 // Create a type-safe IDL
 const votingProgramIdl = {
@@ -31,6 +63,44 @@ const votingProgramIdl = {
   errors: idl.errors,
 } as Idl;
 
+// Type guards
+const isProgramState = (account: any): account is ProgramAccountType => {
+  console.log("Validating program state account:", account);
+  return (
+    account &&
+    'proposalCount' in account &&
+    account.proposalCount instanceof BN &&
+    'authority' in account &&
+    account.authority instanceof PublicKey
+  );
+};
+
+const isProposal = (account: any): account is ProposalAccountType => {
+  console.log("Validating proposal account:", account);
+  return (
+    account &&
+    'id' in account && account.id instanceof BN &&
+    'title' in account && typeof account.title === 'string' &&
+    'description' in account && typeof account.description === 'string' &&
+    'creator' in account && account.creator instanceof PublicKey &&
+    'yesVotes' in account && account.yesVotes instanceof BN &&
+    'noVotes' in account && account.noVotes instanceof BN &&
+    'endTime' in account && account.endTime instanceof BN &&
+    'isActive' in account && typeof account.isActive === 'boolean' &&
+    'totalVoters' in account && account.totalVoters instanceof BN
+  );
+};
+
+const isVoterInfo = (account: any): account is VoterInfoType => {
+  console.log("Validating voter info account:", account);
+  return (
+    account &&
+    'hasVoted' in account && typeof account.hasVoted === 'boolean' &&
+    'voter' in account && account.voter instanceof PublicKey &&
+    'vote' in account && typeof account.vote === 'boolean'
+  );
+};
+
 export default function ProposalsPage() {
   const wallet = useWallet();
   const [mounted, setMounted] = useState(false);
@@ -41,6 +111,7 @@ export default function ProposalsPage() {
   const [programStatePDA, setProgramStatePDA] = useState<PublicKey | null>(null);
   const [connection, setConnection] = useState<Connection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Handle mounting state
   useEffect(() => {
@@ -156,9 +227,10 @@ export default function ProposalsPage() {
           console.log("Fetched program state:", programState);
           
           // Verify the account data
-          if (programState) {
+          const typedAccount = programState as unknown as ProgramAccountType;
+          if (isProgramState(typedAccount)) {
             console.log("Program state initialized and verified successfully");
-            return programState;
+            return typedAccount;
           }
           
           console.log("Invalid program state data, retrying...");
@@ -189,12 +261,27 @@ export default function ProposalsPage() {
     try {
       const account = await program.account.programState.fetch(programStatePDA);
       console.log("Raw program state account:", account);
+      console.log("Account keys:", Object.keys(account));
+      console.log("proposalCount type:", typeof account.proposalCount);
+      console.log("authority type:", typeof account.authority);
       
-      return account;
+      const typedAccount = account as unknown as ProgramAccountType;
+      if (!isProgramState(typedAccount)) {
+        console.error("Program state validation failed. Account:", typedAccount);
+        throw new Error("Invalid program state account data");
+      }
+      return typedAccount;
     } catch (err: any) {
       if (err.toString().includes("Account does not exist")) {
         console.log("Program state account does not exist, initializing...");
-        return await initializeProgramState();
+        const newAccount = await initializeProgramState();
+        console.log("New program state account:", newAccount);
+        const typedNewAccount = newAccount as unknown as ProgramAccountType;
+        if (!isProgramState(typedNewAccount)) {
+          console.error("New program state validation failed. Account:", typedNewAccount);
+          throw new Error("Invalid program state account data after initialization");
+        }
+        return typedNewAccount;
       }
       throw err;
     }
@@ -227,26 +314,33 @@ export default function ProposalsPage() {
             program.programId
           );
           
-          const proposalData = await program.account.proposal.fetch(proposalPDA);
-          console.log("Raw proposal data:", proposalData);
+          const rawProposalData = await program.account.proposal.fetch(proposalPDA);
+          console.log("Raw proposal data:", rawProposalData);
           
-          // Convert BN-like objects to actual BN instances if needed
-          const processedProposal = {
-            ...proposalData,
-            id: BN.isBN(proposalData.id) ? proposalData.id : new BN(proposalData.id),
-            yesVotes: BN.isBN(proposalData.yesVotes) ? proposalData.yesVotes : new BN(proposalData.yesVotes),
-            noVotes: BN.isBN(proposalData.noVotes) ? proposalData.noVotes : new BN(proposalData.noVotes),
-            endTime: BN.isBN(proposalData.endTime) ? proposalData.endTime : new BN(proposalData.endTime),
-            totalVoters: BN.isBN(proposalData.totalVoters) ? proposalData.totalVoters : new BN(proposalData.totalVoters),
-            creator: proposalData.creator instanceof PublicKey ? proposalData.creator : new PublicKey(proposalData.creator),
+          const typedProposalData = rawProposalData as unknown as ProposalAccountType;
+          if (!isProposal(typedProposalData)) {
+            console.error(`Invalid proposal data for proposal ${i}:`, typedProposalData);
+            continue;
+          }
+          
+          // Process the proposal data
+          const processedProposal: Proposal = {
+            id: typedProposalData.id,
+            title: typedProposalData.title,
+            description: typedProposalData.description,
+            creator: typedProposalData.creator,
+            yesVotes: typedProposalData.yesVotes,
+            noVotes: typedProposalData.noVotes,
+            endTime: typedProposalData.endTime,
+            isActive: typedProposalData.isActive,
+            totalVoters: typedProposalData.totalVoters,
             publicKey: proposalPDA,
-            endTimeFormatted: new Date(proposalData.endTime.toNumber() * 1000).toLocaleString()
+            endTimeFormatted: new Date(typedProposalData.endTime.toNumber() * 1000).toLocaleString()
           };
           
           proposalAccounts.push(processedProposal);
         } catch (err) {
-          console.error(`Failed to fetch proposal ${i}:`, err);
-          continue;
+          console.error(`Error fetching proposal ${i}:`, err);
         }
       }
       
@@ -291,7 +385,7 @@ export default function ProposalsPage() {
       const now = Math.floor(Date.now() / 1000);
       const endTime = new BN(now + (durationInDays * 24 * 60 * 60));
       
-      const proposalId = programState.proposalCount.toNumber();
+      const proposalId = (programState as any).proposalCount.toNumber();
       const [proposalPDA] = await PublicKey.findProgramAddress(
         [Buffer.from("proposal"), new BN(proposalId).toArrayLike(Buffer, "le", 8)],
         program.programId
@@ -407,7 +501,11 @@ export default function ProposalsPage() {
       
       try {
         const voterInfo = await program.account.voterInfo.fetch(voterInfoPDA);
-        return { hasVoted: voterInfo.hasVoted, vote: voterInfo.vote };
+        const typedVoterInfo = voterInfo as unknown as VoterInfoType;
+        if (!isVoterInfo(typedVoterInfo)) {
+          throw new Error("Invalid voter info account data");
+        }
+        return { hasVoted: typedVoterInfo.hasVoted, vote: typedVoterInfo.vote };
       } catch {
         return { hasVoted: false, vote: false };
       }
@@ -420,75 +518,137 @@ export default function ProposalsPage() {
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-[#0A0F1C]">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[1000px] bg-gradient-to-b from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-full blur-3xl"></div>
+            </div>
+      
       <Navbar />
       
-      <div className="container mx-auto px-6 py-32">
-        <header className="mb-12">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
-                Governance Proposals
-              </h1>
-              <p className="text-gray-400 text-lg">
-                Create and vote on proposals using Solana blockchain
-              </p>
-            </div>
-          </div>
+      <main className="relative pt-8">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-7xl mx-auto"
+          >
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
-              <p className="text-red-400">{error}</p>
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-center">
+                {error}
             </div>
           )}
-        </header>
 
         {!wallet.publicKey ? (
-          <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-            <div className="bg-gray-800/50 p-8 rounded-2xl backdrop-blur-sm border border-gray-700 shadow-xl max-w-lg mx-auto">
-              <h2 className="text-2xl font-semibold mb-4 text-gray-200">Welcome to Solana Voting</h2>
-              <p className="text-xl mb-6 text-gray-400">Connect your wallet to start creating and voting on proposals</p>
-              <div className="flex justify-center">
-                <button className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all">
-                  Connect Wallet
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-1">
-              <div className="bg-gray-800/50 p-6 rounded-2xl backdrop-blur-sm border border-gray-700 shadow-xl sticky top-24">
-                <h2 className="text-2xl font-semibold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-                  Create Proposal
-                </h2>
-                <CreateProposalForm onSubmit={createProposal} isLoading={loading} />
-              </div>
-            </div>
-            
-            <div className="lg:col-span-2">
-              <div className="bg-gray-800/50 p-6 rounded-2xl backdrop-blur-sm border border-gray-700 shadow-xl">
-                {selectedProposal ? (
-                  <ProposalDetails 
-                    proposal={selectedProposal}
-                    onBack={() => setSelectedProposal(null)}
-                    onVote={castVote}
-                    onFinalize={finalizeProposal}
-                    checkVoterStatus={checkVoterStatus}
-                    userPubkey={wallet.publicKey}
-                    isLoading={loading}
-                  />
-                ) : (
-                  <ProposalList 
-                    proposals={proposals} 
-                    onSelectProposal={setSelectedProposal}
-                    isLoading={loading}
-                  />
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center p-6 sm:p-8 bg-white/5 rounded-3xl border border-white/10 max-w-lg mx-auto"
+              >
+                <h2 className="text-xl sm:text-2xl font-semibold text-white mb-4">Connect Wallet</h2>
+                <WalletMultiButtonDynamic className="!bg-blue-600 hover:!opacity-90 !transition-all !duration-300 !rounded-xl !py-3 !px-6 !text-sm !font-medium mx-auto" />
+              </motion.div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="space-y-6"
+              >
+                {/* Create Proposal Modal */}
+                {showCreateForm && (
+                  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-[#0A0F1C] p-4 sm:p-6 rounded-2xl border border-white/10 w-full max-w-xl relative"
+                    >
+                      <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-semibold text-white">New Proposal</h2>
+                        <button 
+                          onClick={() => setShowCreateForm(false)}
+                          className="text-gray-400 hover:text-white transition-colors p-1.5"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <CreateProposalForm 
+                        onSubmit={async (...args) => {
+                          await createProposal(...args);
+                          setShowCreateForm(false);
+                        }} 
+                        isLoading={loading} 
+                      />
+                    </motion.div>
+                  </div>
                 )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+
+                {/* Main Content */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Proposals List */}
+                  <div className="lg:col-span-5">
+                    <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/10 backdrop-blur-sm h-full">
+                      <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-lg font-semibold text-white">Active Proposals</h2>
+                        <button
+                          onClick={() => setShowCreateForm(true)}
+                          className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200"
+                          title="Create New Proposal"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                      {loading && (
+                        <div className="flex justify-end mb-3">
+                          <span className="px-2 py-0.5 text-xs font-medium text-blue-400 bg-blue-400/10 rounded-full border border-blue-400/20 animate-pulse">
+                            Loading...
+                          </span>
+                        </div>
+                      )}
+                      <div className="overflow-y-auto max-h-[calc(100vh-12rem)] scrollbar-thin scrollbar-track-[#0A0F1C] scrollbar-thumb-gradient hover:scrollbar-thumb-gradient-hover scrollbar-thumb-rounded-full scrollbar-track-rounded-full transition-all duration-200 pr-2 [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-blue-500/20 [&::-webkit-scrollbar-thumb]:via-purple-500/20 [&::-webkit-scrollbar-thumb]:to-pink-500/20 hover:[&::-webkit-scrollbar-thumb]:from-blue-500/40 hover:[&::-webkit-scrollbar-thumb]:via-purple-500/40 hover:[&::-webkit-scrollbar-thumb]:to-pink-500/40">
+                        <ProposalList 
+                          proposals={proposals}
+                          onSelectProposal={setSelectedProposal}
+                          isLoading={loading}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Proposal Details */}
+                  <div className="lg:col-span-7 lg:sticky lg:top-24">
+                    {selectedProposal ? (
+                      <div className="bg-white/5 p-3 sm:p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
+                        <ProposalDetails
+                          proposal={selectedProposal}
+                          onVote={castVote}
+                          onFinalize={finalizeProposal}
+                          checkVoterStatus={checkVoterStatus}
+                          isLoading={loading}
+                          onBack={() => setSelectedProposal(null)}
+                          userPubkey={wallet.publicKey}
+                        />
+                      </div>
+                    ) : (
+                      <div className="bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm text-center">
+                        <div className="text-gray-400">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                          <p className="text-sm">Select a proposal to view details</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </motion.div>
+        </div>
+      </main>
     </div>
   );
-} 
+}

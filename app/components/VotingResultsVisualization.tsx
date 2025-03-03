@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Proposal } from '../app/types';
+import { Proposal } from '../proposals/types';
 
 interface VotingResultsVisualizationProps {
   proposals: Proposal[];

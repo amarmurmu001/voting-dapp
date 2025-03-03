@@ -42,12 +42,12 @@ export default function RootLayout({
             <span className="flex items-center justify-center gap-1">
               <span>✨ Designed and created by</span>
               <a 
-                href="https://twitter.com/Amar_Murmu" 
+                href="https://twitter.com/amarmurmu001" 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent hover:text-white transition-colors duration-200"
               >
-                @Amar_Murmu
+                @amarmurmu001
               </a>
               <span>✏️</span>
             </span>

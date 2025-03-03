@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Proposal } from '../app/types';
 
-const VotingResultsVisualization = ({ proposals }) => {
-  const [selectedProposal, setSelectedProposal] = useState(null);
+interface VotingResultsVisualizationProps {
+  proposals: Proposal[];
+}
+
+const VotingResultsVisualization: React.FC<VotingResultsVisualizationProps> = ({ proposals }) => {
+  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
   
   useEffect(() => {
     if (proposals && proposals.length > 0) {
@@ -19,7 +24,7 @@ const VotingResultsVisualization = ({ proposals }) => {
   }
   
   // Handler for proposal selection
-  const handleSelectProposal = (proposal) => {
+  const handleSelectProposal = (proposal: Proposal) => {
     setSelectedProposal(proposal);
   };
   
@@ -56,7 +61,7 @@ const VotingResultsVisualization = ({ proposals }) => {
         </label>
         <select 
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={selectedProposal ? selectedProposal.id : ''}
+          value={selectedProposal ? selectedProposal.id.toString() : ''}
           onChange={(e) => {
             const proposal = proposals.find(p => p.id.toString() === e.target.value);
             if (proposal) handleSelectProposal(proposal);
